@@ -32,7 +32,10 @@ GoRouter buildAppRouter(AppController controller) {
         builder: (context, state) => const SplashPage(),
       ),
       ShellRoute(
-        builder: (context, state, child) => AppShell(child: child),
+        builder: (context, state, child) => AppShell(
+          location: state.matchedLocation,
+          child: child,
+        ),
         routes: [
           GoRoute(
             path: '/dashboard',

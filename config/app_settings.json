@@ -1,6 +1,8 @@
 {
   "storageFolder": "Photobooth",
   "fileNamePrefix": "PHOTO",
+  "preferredCameraName": "Integrated Camera",
+  "ffmpegBinaryPath": "",
   "autoDownload": true,
   "autoDelete": false,
   "language": "Indonesia",

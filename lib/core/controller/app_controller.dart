@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
@@ -12,6 +13,7 @@ import '../models/diagnostic_models.dart';
 import '../repositories/camera_repository.dart';
 import '../repositories/diagnostic_repository.dart';
 import '../repositories/settings_repository.dart';
+import '../../native/windows/camera_ffi.dart';
 
 class AppController extends ChangeNotifier {
   AppController({
@@ -19,18 +21,24 @@ class AppController extends ChangeNotifier {
     required this._settingsRepository,
     required this._cameraRepository,
     required this._diagnosticRepository,
+    required this._cameraNativeBridge,
   });
 
   final AppLoggerService _logger;
   final SettingsRepository _settingsRepository;
   final CameraRepository _cameraRepository;
   final DiagnosticRepository _diagnosticRepository;
+  final CameraNativeBridge _cameraNativeBridge;
 
   bool _bootstrapped = false;
   bool _bootstrapping = false;
   bool _busy = false;
   AppSettings _settings = AppSettings.defaults();
   CameraSnapshot _cameraSnapshot = CameraSnapshot.initial();
+  List<String> _availableCameras = const [];
+  Timer? _liveViewTimer;
+  String? _liveViewFramePath;
+  bool _refreshingLiveView = false;
   StartupReport? _startupReport;
   List<DiagnosticCheck> _smartDiagnostic = const [];
   List<GalleryItem> _gallery = const [];
@@ -41,6 +49,9 @@ class AppController extends ChangeNotifier {
   bool get busy => _busy;
   AppSettings get settings => _settings;
   CameraSnapshot get cameraSnapshot => _cameraSnapshot;
+  List<String> get availableCameras => _availableCameras;
+  String? get liveViewFramePath => _liveViewFramePath;
+  bool get isLiveViewRunning => _liveViewTimer?.isActive == true;
   StartupReport? get startupReport => _startupReport;
   List<DiagnosticCheck> get smartDiagnostic => _smartDiagnostic;
   List<GalleryItem> get gallery => _gallery;
@@ -49,13 +60,13 @@ class AppController extends ChangeNotifier {
   String get cameraStatusLabel {
     switch (_cameraSnapshot.connectionState) {
       case CameraConnectionState.connected:
-        return 'Kamera Terhubung';
+        return 'Webcam Terhubung';
       case CameraConnectionState.connecting:
         return 'Sedang menghubungkan';
       case CameraConnectionState.error:
-        return 'Kamera Bermasalah';
+        return 'Webcam Bermasalah';
       case CameraConnectionState.disconnected:
-        return 'Kamera Tidak Terhubung';
+        return 'Webcam Tidak Terhubung';
     }
   }
 
@@ -66,31 +77,122 @@ class AppController extends ChangeNotifier {
 
     _bootstrapping = true;
     notifyListeners();
-    await _logger.info('App Start');
+    try {
+      await _logger.info('App Start');
 
-    _settings = await _settingsRepository.load();
-    await _ensureStorageFolderExists();
-    _cameraSnapshot = _cameraRepository.snapshot;
-    _startupReport = await _diagnosticRepository.runStartupChecks();
-    _smartDiagnostic = await _diagnosticRepository.runSmartDiagnostic();
-    _supportInformation = await _diagnosticRepository.buildSupportInformation();
-    await _refreshGallery();
+      _settings = await _settingsRepository.load();
+      _cameraNativeBridge.configureBinaryPath(_settings.ffmpegBinaryPath);
+      _cameraNativeBridge.configurePreferredCamera(_settings.preferredCameraName);
 
-    _bootstrapping = false;
-    _bootstrapped = true;
-    notifyListeners();
-    return _startupReport?.ready == true
-        ? 'Aplikasi siap digunakan.'
-        : 'Beberapa pemeriksaan belum lolos, tetapi aplikasi tetap dapat dibuka.';
+      try {
+        _availableCameras = _cameraNativeBridge.listAvailableCameras();
+      } catch (error, stackTrace) {
+        _availableCameras = const [];
+        await _logger.error(
+          'Camera enumeration failed during bootstrap',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+
+      await _ensureStorageFolderExists();
+      _cameraSnapshot = _cameraRepository.snapshot;
+
+      if (_cameraSnapshot.connectionState == CameraConnectionState.disconnected &&
+          _cameraNativeBridge.isAvailable &&
+          _availableCameras.isNotEmpty) {
+        await _logger.info('Auto connect camera requested');
+        try {
+          _cameraSnapshot = await _cameraRepository.connect();
+        } catch (error, stackTrace) {
+          await _logger.error(
+            'Auto connect failed during bootstrap',
+            error: error,
+            stackTrace: stackTrace,
+          );
+        }
+      }
+
+      try {
+        _startupReport = await _diagnosticRepository.runStartupChecks();
+      } catch (error, stackTrace) {
+        _startupReport = const StartupReport(ready: false, checks: []);
+        await _logger.error(
+          'Startup checks failed',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+
+      try {
+        _smartDiagnostic = await _diagnosticRepository.runSmartDiagnostic();
+      } catch (error, stackTrace) {
+        _smartDiagnostic = const [];
+        await _logger.error(
+          'Smart diagnostic failed',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+
+      try {
+        _supportInformation = await _diagnosticRepository.buildSupportInformation();
+      } catch (error, stackTrace) {
+        _supportInformation = null;
+        await _logger.error(
+          'Support information build failed',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+
+      try {
+        await _refreshGallery();
+      } catch (error, stackTrace) {
+        await _logger.error(
+          'Gallery refresh failed during bootstrap',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+
+      return _startupReport?.ready == true
+          ? 'Aplikasi siap digunakan.'
+          : 'Beberapa pemeriksaan belum lolos, tetapi aplikasi tetap dapat dibuka.';
+    } catch (error, stackTrace) {
+      await _logger.error(
+        'App bootstrap failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      _startupReport = const StartupReport(ready: false, checks: []);
+      return 'Aplikasi dibuka dengan mode terbatas.';
+    } finally {
+      _bootstrapping = false;
+      _bootstrapped = true;
+      notifyListeners();
+    }
   }
 
   Future<String> connectCamera() async {
     await _setBusy(true);
     try {
+      if (_cameraSnapshot.connectionState == CameraConnectionState.connected) {
+        return 'Webcam sudah terhubung.';
+      }
       _cameraSnapshot = await _cameraRepository.connect();
+      if (_cameraSnapshot.connectionState != CameraConnectionState.connected) {
+        await _logger.warn('Camera connect did not reach connected state', data: {
+          'cameraName': _cameraSnapshot.cameraName,
+          'state': _cameraSnapshot.connectionState.name,
+        });
+        return _cameraSnapshot.cameraName == 'Webcam belum terdeteksi'
+            ? 'Webcam terdeteksi, tetapi backend kamera belum bisa terhubung.'
+            : 'Webcam belum bisa terhubung. Periksa backend kamera dan driver Windows.';
+      }
       await _logger.info('Camera Connected');
       await _refreshDiagnostics();
-      return 'Kamera berhasil terhubung.';
+      return 'Webcam berhasil terhubung.';
     } catch (error, stackTrace) {
       await _logger.error('Camera connection failed', error: error, stackTrace: stackTrace);
       _cameraSnapshot = _cameraSnapshot.copyWith(
@@ -106,9 +208,11 @@ class AppController extends ChangeNotifier {
     await _setBusy(true);
     try {
       _cameraSnapshot = await _cameraRepository.disconnect();
+      _stopLiveViewRefreshLoop();
+      _liveViewFramePath = null;
       await _logger.info('Camera Disconnected');
       await _refreshDiagnostics();
-      return 'Kamera berhasil diputuskan.';
+      return 'Webcam berhasil diputuskan.';
     } finally {
       await _setBusy(false);
     }
@@ -129,6 +233,13 @@ class AppController extends ChangeNotifier {
     await _setBusy(true);
     try {
       _cameraSnapshot = await _cameraRepository.toggleLiveView();
+      if (_cameraSnapshot.isLiveViewActive) {
+        _startLiveViewRefreshLoop();
+        await _refreshLiveViewFrame();
+      } else {
+        _stopLiveViewRefreshLoop();
+        _liveViewFramePath = null;
+      }
       return _cameraSnapshot.isLiveViewActive
           ? 'Live view diaktifkan.'
           : 'Live view dimatikan.';
@@ -141,7 +252,7 @@ class AppController extends ChangeNotifier {
     await _setBusy(true);
     try {
       if (_cameraSnapshot.connectionState != CameraConnectionState.connected) {
-        return 'Kamera belum terhubung.';
+        return 'Webcam belum terhubung.';
       }
 
       final photo = await _cameraRepository.capture(
@@ -163,12 +274,27 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  Future<String> refreshLiveView() async {
+    await _setBusy(true);
+    try {
+      if (_cameraSnapshot.connectionState != CameraConnectionState.connected) {
+        return 'Webcam belum terhubung.';
+      }
+      await _refreshLiveViewFrame();
+      return _liveViewFramePath == null
+          ? 'Preview live view belum bisa diperbarui.'
+          : 'Preview live view diperbarui.';
+    } finally {
+      await _setBusy(false);
+    }
+  }
+
   Future<String> reloadSdk() async {
     await _setBusy(true);
     try {
       _cameraSnapshot = await _cameraRepository.refreshSdk();
       _smartDiagnostic = await _diagnosticRepository.runSmartDiagnostic();
-      return 'SDK berhasil dimuat ulang.';
+      return 'Webcam backend berhasil dimuat ulang.';
     } finally {
       await _setBusy(false);
     }
@@ -178,10 +304,24 @@ class AppController extends ChangeNotifier {
     await _setBusy(true);
     try {
       _cameraSnapshot = await _cameraRepository.rescanUsb();
+      _availableCameras = _cameraNativeBridge.listAvailableCameras();
       _smartDiagnostic = await _diagnosticRepository.runSmartDiagnostic();
       return _cameraSnapshot.connectionState == CameraConnectionState.connected
           ? 'Kamera berhasil ditemukan.'
           : 'Pemindaian USB selesai.';
+    } finally {
+      await _setBusy(false);
+    }
+  }
+
+  Future<String> refreshAvailableCameras() async {
+    await _setBusy(true);
+    try {
+      _availableCameras = _cameraNativeBridge.listAvailableCameras();
+      notifyListeners();
+      return _availableCameras.isEmpty
+          ? 'Tidak ada webcam terdeteksi.'
+          : 'Daftar webcam berhasil diperbarui.';
     } finally {
       await _setBusy(false);
     }
@@ -214,11 +354,44 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  Future<String> repairDiagnosticIssue(DiagnosticCheck check) async {
+    switch (check.code) {
+      case 'CAM001':
+      case 'CAM003':
+        final scanMessage = await scanUsb();
+        if (_cameraSnapshot.connectionState != CameraConnectionState.connected) {
+          final connectMessage = await connectCamera();
+          return '$scanMessage $connectMessage';
+        }
+        return scanMessage;
+      case 'CAM005':
+        return await repairAutomatically();
+      case 'CAM006':
+        await _ensureStorageFolderExists();
+        await _refreshDiagnostics();
+        return 'Folder penyimpanan sudah diperbaiki.';
+      case 'CAM007':
+        return 'Pilih folder lain atau jalankan aplikasi sebagai administrator.';
+      case 'CAM008':
+        return 'Pastikan driver kamera sudah terpasang di Windows.';
+      case 'CAM009':
+        final liveViewMessage = await toggleLiveView();
+        return liveViewMessage;
+      case 'CAM010':
+      default:
+        await runSmartDiagnostic();
+        return 'Diagnostik dijalankan ulang.';
+    }
+  }
+
   Future<String> saveSettings(AppSettings settings) async {
     await _setBusy(true);
     try {
       _settings = settings;
       await _settingsRepository.save(settings);
+      _cameraNativeBridge.configureBinaryPath(settings.ffmpegBinaryPath);
+      _cameraNativeBridge.configurePreferredCamera(settings.preferredCameraName);
+      _availableCameras = _cameraNativeBridge.listAvailableCameras();
       await _ensureStorageFolderExists();
       _supportInformation = await _diagnosticRepository.buildSupportInformation();
       notifyListeners();
@@ -263,20 +436,38 @@ class AppController extends ChangeNotifier {
         'startup_checks': _startupReport?.checks
             .map(
               (check) => {
+                'code': check.code,
                 'title': check.title,
                 'level': check.level.name,
                 'detail': check.detail,
                 'solution': check.solution,
+                'steps': check.steps
+                    .map(
+                      (step) => {
+                        'title': step.title,
+                        'detail': step.detail,
+                      },
+                    )
+                    .toList(),
               },
             )
             .toList(),
         'smart_diagnostic': _smartDiagnostic
             .map(
               (check) => {
+                'code': check.code,
                 'title': check.title,
                 'level': check.level.name,
                 'detail': check.detail,
                 'solution': check.solution,
+                'steps': check.steps
+                    .map(
+                      (step) => {
+                        'title': step.title,
+                        'detail': step.detail,
+                      },
+                    )
+                    .toList(),
               },
             )
             .toList(),
@@ -344,7 +535,7 @@ class AppController extends ChangeNotifier {
     final info = await _diagnosticRepository.buildSupportInformation();
     final text = [
       'App Version: ${info.appVersion}',
-      'SDK Version: ${info.sdkVersion}',
+      'Webcam Backend Version: ${info.sdkVersion}',
       'Windows Version: ${info.windowsVersion}',
       'Camera Name: ${info.cameraName}',
       'Camera Serial Number: ${info.cameraSerialNumber}',
@@ -372,6 +563,12 @@ class AppController extends ChangeNotifier {
     await _refreshGallery();
   }
 
+  @override
+  void dispose() {
+    _stopLiveViewRefreshLoop();
+    super.dispose();
+  }
+
   Future<void> _refreshDiagnostics() async {
     _smartDiagnostic = await _diagnosticRepository.runSmartDiagnostic();
     _startupReport = await _diagnosticRepository.runStartupChecks();
@@ -379,17 +576,60 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _startLiveViewRefreshLoop() {
+    _liveViewTimer?.cancel();
+    _liveViewTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) {
+        unawaited(_refreshLiveViewFrame());
+      },
+    );
+  }
+
+  void _stopLiveViewRefreshLoop() {
+    _liveViewTimer?.cancel();
+    _liveViewTimer = null;
+  }
+
+  Future<void> _refreshLiveViewFrame() async {
+    if (_refreshingLiveView) {
+      return;
+    }
+    if (_cameraSnapshot.connectionState != CameraConnectionState.connected) {
+      return;
+    }
+
+    try {
+      _refreshingLiveView = true;
+      final framePath = await _cameraRepository.capturePreviewFrame(
+        storageFolder:
+            '${Directory.systemTemp.path}${Platform.pathSeparator}photobooth_liveview',
+        fileNamePrefix: 'liveview',
+      );
+      _liveViewFramePath = framePath;
+      notifyListeners();
+    } catch (error, stackTrace) {
+      await _logger.error(
+        'Live view refresh failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    } finally {
+      _refreshingLiveView = false;
+    }
+  }
+
   Future<void> _refreshGallery() async {
     final folder = Directory(_settings.storageFolder);
     if (!await folder.exists()) {
       _gallery = const [];
+      notifyListeners();
       return;
     }
 
     final photos = <GalleryItem>[];
     await for (final entity in folder.list()) {
-      if (entity is File &&
-          entity.path.toLowerCase().endsWith('.jpg')) {
+      if (entity is File && _isGalleryImage(entity.path)) {
         photos.add(
           GalleryItem(
             fileName: entity.uri.pathSegments.last,
@@ -402,6 +642,14 @@ class AppController extends ChangeNotifier {
 
     _gallery = photos.reversed.toList(growable: false);
     notifyListeners();
+  }
+
+  bool _isGalleryImage(String path) {
+    final lowerPath = path.toLowerCase();
+    return lowerPath.endsWith('.jpg') ||
+        lowerPath.endsWith('.jpeg') ||
+        lowerPath.endsWith('.png') ||
+        lowerPath.endsWith('.bmp');
   }
 
   Future<void> _ensureStorageFolderExists() async {

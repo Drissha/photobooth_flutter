@@ -1,10 +1,27 @@
 import 'dart:io';
 
 import '../constants/app_constants.dart';
+import '../constants/error_codes.dart';
 import '../models/camera_models.dart';
 import '../models/diagnostic_models.dart';
+import '../../native/windows/camera_ffi.dart';
 
 class SystemService {
+  SystemService({CameraNativeBridge? cameraNativeBridge})
+      : _cameraNativeBridge = cameraNativeBridge ?? CameraNativeBridge();
+
+  final CameraNativeBridge _cameraNativeBridge;
+
+  Future<bool> isCameraEngineAvailable() async {
+    return _cameraNativeBridge.isAvailable;
+  }
+
+  Future<bool> isLibGPhoto2Available() async {
+    return _cameraNativeBridge.isAvailable;
+  }
+
+  Future<bool> isVendorSdkAvailable() async => isLibGPhoto2Available();
+
   Future<String> getWindowsVersion() async {
     if (!Platform.isWindows) {
       return 'Windows-only';
@@ -38,6 +55,7 @@ class SystemService {
   }) async {
     final checks = <DiagnosticCheck>[
       DiagnosticCheck(
+        code: ErrorCodes.cam010,
         title: 'Windows',
         level: Platform.isWindows ? HealthLevel.green : HealthLevel.red,
         detail: Platform.isWindows
@@ -48,24 +66,39 @@ class SystemService {
             : 'Jalankan aplikasi di Windows 10/11.',
       ),
       DiagnosticCheck(
-        title: 'SDK',
+        code: ErrorCodes.cam005,
+        title: 'Webcam Backend',
         level: sdkLoaded ? HealthLevel.green : HealthLevel.red,
-        detail: sdkLoaded ? 'SDK siap digunakan.' : 'SDK belum tersedia.',
+        detail: sdkLoaded
+            ? 'Webcam backend siap digunakan.'
+            : 'Webcam backend belum tersedia.',
         solution: sdkLoaded
             ? 'Tidak ada tindakan yang diperlukan.'
-            : 'Install ulang aplikasi atau aktifkan SDK vendor.',
+            : 'Pastikan backend capture tersedia dan kamera Windows terdeteksi.',
+        steps: const [
+          DiagnosticStep(
+            title: 'Langkah 1',
+            detail: 'Tutup aplikasi lalu jalankan ulang.',
+          ),
+          DiagnosticStep(
+            title: 'Langkah 2',
+            detail: 'Pastikan webcam driver Windows dan backend capture sudah tersedia.',
+          ),
+        ],
       ),
       DiagnosticCheck(
+        code: ErrorCodes.cam005,
         title: 'DLL',
         level: dllLoaded ? HealthLevel.green : HealthLevel.red,
         detail: dllLoaded
-            ? 'Camera engine sudah termuat.'
-            : 'Camera engine belum ditemukan.',
+            ? 'Backend kamera sudah termuat.'
+            : 'Backend kamera belum ditemukan.',
         solution: dllLoaded
             ? 'Tidak ada tindakan yang diperlukan.'
-            : 'Silakan reinstall aplikasi.',
+            : 'Pastikan backend capture Windows dapat dijalankan.',
       ),
       DiagnosticCheck(
+        code: ErrorCodes.cam001,
         title: 'Camera',
         level: cameraConnected ? HealthLevel.green : HealthLevel.yellow,
         detail: cameraConnected
@@ -76,6 +109,7 @@ class SystemService {
             : 'Hubungkan kamera lalu tekan Hubungkan Kamera.',
       ),
       DiagnosticCheck(
+        code: ErrorCodes.cam006,
         title: 'Folder Penyimpanan',
         level: await Directory(storageFolder).exists()
             ? HealthLevel.green
@@ -86,6 +120,7 @@ class SystemService {
         solution: 'Gunakan lokasi penyimpanan yang valid.',
       ),
       DiagnosticCheck(
+        code: ErrorCodes.cam007,
         title: 'Write Permission',
         level: await canWriteToFolder(storageFolder)
             ? HealthLevel.green
@@ -98,12 +133,14 @@ class SystemService {
             : 'Pilih folder lain atau jalankan aplikasi sebagai administrator.',
       ),
       DiagnosticCheck(
+        code: ErrorCodes.cam010,
         title: 'Internet',
         level: HealthLevel.yellow,
         detail: 'Pengecekan internet dapat ditambahkan saat integrasi update.',
         solution: 'Hubungkan jaringan bila fitur update diaktifkan.',
       ),
       DiagnosticCheck(
+        code: ErrorCodes.cam010,
         title: 'Update',
         level: HealthLevel.yellow,
         detail: 'Fitur update belum dihubungkan ke server distribusi.',

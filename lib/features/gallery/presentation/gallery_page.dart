@@ -69,12 +69,19 @@ class GalleryPage extends StatelessWidget {
                           color: const Color(0xFF0B1324),
                           borderRadius: BorderRadius.circular(18),
                         ),
-                        child: const Center(
-                          child: Icon(
-                            Icons.photo,
-                            size: 64,
-                            color: Colors.white54,
-                          ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Image.file(
+                          File(item.filePath),
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return const Center(
+                              child: Icon(
+                                Icons.photo,
+                                size: 64,
+                                color: Colors.white54,
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ),

@@ -57,7 +57,7 @@ class SupportPage extends StatelessWidget {
             children: [
               InfoTile(label: 'Versi aplikasi', value: info?.appVersion ?? '-'),
               const SizedBox(height: 12),
-              InfoTile(label: 'Versi SDK', value: info?.sdkVersion ?? '-'),
+              InfoTile(label: 'Versi Webcam Backend', value: info?.sdkVersion ?? '-'),
               const SizedBox(height: 12),
               InfoTile(label: 'Versi Windows', value: info?.windowsVersion ?? '-'),
               const SizedBox(height: 12),

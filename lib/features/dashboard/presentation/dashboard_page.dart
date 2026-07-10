@@ -61,21 +61,36 @@ class DashboardPage extends StatelessWidget {
           runSpacing: 12,
           children: [
             ActionButton(
-              label: 'Hubungkan Kamera',
-              icon: Icons.link,
-              onPressed: () async {
-                final message = await controller.connectCamera();
-                if (context.mounted) {
-                  _showSnack(context, message);
-                }
-              },
+              label: connected ? 'Webcam Tersambung' : 'Hubungkan Webcam',
+              icon: connected ? Icons.link : Icons.link_off,
+              onPressed: connected
+                  ? null
+                  : () async {
+                      final message = await controller.connectCamera();
+                      if (context.mounted) {
+                        _showSnack(context, message);
+                      }
+                    },
             ),
             ActionButton(
-              label: 'Putuskan Kamera',
+              label: 'Putuskan Webcam',
               icon: Icons.link_off,
               isPrimary: false,
+              onPressed: connected
+                  ? () async {
+                      final message = await controller.disconnectCamera();
+                      if (context.mounted) {
+                        _showSnack(context, message);
+                      }
+                    }
+                  : null,
+            ),
+            ActionButton(
+              label: 'Refresh Kamera',
+              icon: Icons.refresh,
+              isPrimary: false,
               onPressed: () async {
-                final message = await controller.disconnectCamera();
+                final message = await controller.refreshAvailableCameras();
                 if (context.mounted) {
                   _showSnack(context, message);
                 }

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/controller/app_controller.dart';
@@ -19,9 +18,6 @@ class _SplashPageState extends State<SplashPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final controller = context.read<AppController>();
       await controller.bootstrap();
-      if (mounted) {
-        context.go('/dashboard');
-      }
     });
   }
 

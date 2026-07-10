@@ -6,14 +6,14 @@ import '../core/controller/app_controller.dart';
 import 'app_widgets.dart';
 
 class AppShell extends StatelessWidget {
-  const AppShell({super.key, required this.child});
+  const AppShell({super.key, required this.child, required this.location});
 
   final Widget child;
+  final String location;
 
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<AppController>();
-    final location = GoRouterState.of(context).uri.path;
     final selectedIndex = _indexForLocation(location);
 
     return Scaffold(
@@ -157,7 +157,7 @@ class _Sidebar extends StatelessWidget {
                   ),
                 ],
                 onDestinationSelected: (index) {
-                  context.go(_routeForIndex(index));
+                  _goToIndex(context, index);
                 },
               ),
             ),
@@ -167,22 +167,15 @@ class _Sidebar extends StatelessWidget {
     );
   }
 
-  String _routeForIndex(int index) {
-    switch (index) {
-      case 1:
-        return '/live-view';
-      case 2:
-        return '/gallery';
-      case 3:
-        return '/settings';
-      case 4:
-        return '/diagnostic';
-      case 5:
-        return '/support';
-      case 0:
-      default:
-        return '/dashboard';
-    }
+  void _goToIndex(BuildContext context, int index) {
+    context.go(const [
+      '/dashboard',
+      '/live-view',
+      '/gallery',
+      '/settings',
+      '/diagnostic',
+      '/support',
+    ][index]);
   }
 }
 

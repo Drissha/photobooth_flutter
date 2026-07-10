@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -13,6 +15,8 @@ class LiveViewPage extends StatelessWidget {
     final controller = context.watch<AppController>();
     final connected =
         controller.cameraSnapshot.connectionState == CameraConnectionState.connected;
+    final framePath = controller.liveViewFramePath;
+    final hasFrame = framePath != null && File(framePath).existsSync();
 
     return ListView(
       children: [
@@ -24,29 +28,69 @@ class LiveViewPage extends StatelessWidget {
         GlassCard(
           child: AspectRatio(
             aspectRatio: 16 / 9,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF111827), Color(0xFF1F2937)],
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF111827), Color(0xFF1F2937)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  border: Border.all(color: const Color(0x1FFFFFFF)),
                 ),
-                border: Border.all(color: const Color(0x1FFFFFFF)),
-              ),
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                child: Stack(
+                  fit: StackFit.expand,
                   children: [
-                    Icon(
-                      connected ? Icons.videocam : Icons.videocam_off,
-                      size: 64,
-                      color: Colors.white70,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      connected
-                          ? 'Preview kamera akan tampil di sini'
-                          : 'Hubungkan kamera untuk melihat preview',
-                      style: const TextStyle(color: Colors.white70),
+                    if (connected && hasFrame)
+                      Image.file(
+                        File(framePath!),
+                        fit: BoxFit.cover,
+                      )
+                    else
+                      Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              connected ? Icons.videocam : Icons.videocam_off,
+                              size: 64,
+                              color: Colors.white70,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              connected
+                                  ? 'Tekan Refresh untuk memuat preview live view'
+                                  : 'Hubungkan kamera untuk melihat preview',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                          ],
+                        ),
+                      ),
+                    Align(
+                      alignment: Alignment.bottomLeft,
+                      child: Container(
+                        margin: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xAA0B1324),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: const Color(0x33FFFFFF)),
+                        ),
+                        child: Text(
+                          controller.isLiveViewRunning
+                              ? 'Live view aktif'
+                              : 'Live view tidak aktif',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -60,17 +104,28 @@ class LiveViewPage extends StatelessWidget {
           runSpacing: 12,
           children: [
             ActionButton(
-              label: 'Autofocus',
-              icon: Icons.center_focus_strong,
+              label: controller.isLiveViewRunning ? 'Stop Live View' : 'Start Live View',
+              icon: controller.isLiveViewRunning ? Icons.stop_circle : Icons.play_arrow,
               onPressed: () async {
-                final message = await controller.autofocus();
+                final message = await controller.toggleLiveView();
                 if (context.mounted) {
                   _snack(context, message);
                 }
               },
             ),
             ActionButton(
-              label: 'Capture',
+              label: 'Refresh Preview',
+              icon: Icons.refresh,
+              isPrimary: false,
+              onPressed: () async {
+                final message = await controller.refreshLiveView();
+                if (context.mounted) {
+                  _snack(context, message);
+                }
+              },
+            ),
+            ActionButton(
+              label: 'Capture Photo',
               icon: Icons.camera_alt,
               onPressed: () async {
                 final message = await controller.takePhoto();
@@ -80,18 +135,29 @@ class LiveViewPage extends StatelessWidget {
               },
             ),
             ActionButton(
-              label: 'Zoom',
-              icon: Icons.zoom_in,
+              label: 'Autofocus',
+              icon: Icons.center_focus_strong,
               isPrimary: false,
               onPressed: () async {
-                final message = await controller.toggleLiveView();
+                final message = await controller.autofocus();
                 if (context.mounted) {
                   _snack(context, message);
                 }
               },
             ),
             ActionButton(
-              label: 'Rotate',
+              label: 'Refresh Kamera',
+              icon: Icons.refresh,
+              isPrimary: false,
+              onPressed: () async {
+                final message = await controller.refreshAvailableCameras();
+                if (context.mounted) {
+                  _snack(context, message);
+                }
+              },
+            ),
+            ActionButton(
+              label: 'Reload SDK',
               icon: Icons.rotate_right,
               isPrimary: false,
               onPressed: () async {
@@ -100,12 +166,6 @@ class LiveViewPage extends StatelessWidget {
                   _snack(context, message);
                 }
               },
-            ),
-            ActionButton(
-              label: 'Fullscreen',
-              icon: Icons.fullscreen,
-              isPrimary: false,
-              onPressed: () {},
             ),
           ],
         ),

@@ -49,32 +49,28 @@ class SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+        Text(
+          title,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
               ),
-              if (subtitle != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  subtitle!,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.white70,
-                      ),
-                ),
-              ],
-            ],
-          ),
         ),
-        if (trailing != null) ...[trailing!],
+        if (subtitle != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            subtitle ?? '',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.white70,
+                ),
+          ),
+        ],
+        if (trailing != null) ...[
+          const SizedBox(height: 16),
+          trailing!,
+        ],
       ],
     );
   }
@@ -136,28 +132,33 @@ class ActionButton extends StatelessWidget {
             colors: [Color(0xFF1F2937), Color(0xFF374151)],
           );
 
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: BoxDecoration(
-          gradient: background,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: foreground, size: 18),
-            const SizedBox(width: 10),
-            Text(
-              label,
-              style: TextStyle(
-                color: foreground,
-                fontWeight: FontWeight.w700,
+    final isEnabled = onPressed != null;
+
+    return Opacity(
+      opacity: isEnabled ? 1 : 0.5,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          decoration: BoxDecoration(
+            gradient: background,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: foreground, size: 18),
+              const SizedBox(width: 10),
+              Text(
+                label,
+                style: TextStyle(
+                  color: foreground,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -4,6 +4,8 @@ class AppSettings {
   const AppSettings({
     required this.storageFolder,
     required this.fileNamePrefix,
+    required this.preferredCameraName,
+    required this.ffmpegBinaryPath,
     required this.autoDownload,
     required this.autoDelete,
     required this.language,
@@ -15,6 +17,8 @@ class AppSettings {
     return const AppSettings(
       storageFolder: AppConstants.defaultStorageFolderName,
       fileNamePrefix: AppConstants.defaultFileNamePrefix,
+      preferredCameraName: '',
+      ffmpegBinaryPath: '',
       autoDownload: true,
       autoDelete: false,
       language: 'Indonesia',
@@ -25,6 +29,8 @@ class AppSettings {
 
   final String storageFolder;
   final String fileNamePrefix;
+  final String preferredCameraName;
+  final String ffmpegBinaryPath;
   final bool autoDownload;
   final bool autoDelete;
   final String language;
@@ -34,6 +40,8 @@ class AppSettings {
   AppSettings copyWith({
     String? storageFolder,
     String? fileNamePrefix,
+    String? preferredCameraName,
+    String? ffmpegBinaryPath,
     bool? autoDownload,
     bool? autoDelete,
     String? language,
@@ -43,6 +51,8 @@ class AppSettings {
     return AppSettings(
       storageFolder: storageFolder ?? this.storageFolder,
       fileNamePrefix: fileNamePrefix ?? this.fileNamePrefix,
+      preferredCameraName: preferredCameraName ?? this.preferredCameraName,
+      ffmpegBinaryPath: ffmpegBinaryPath ?? this.ffmpegBinaryPath,
       autoDownload: autoDownload ?? this.autoDownload,
       autoDelete: autoDelete ?? this.autoDelete,
       language: language ?? this.language,
@@ -55,6 +65,8 @@ class AppSettings {
     return {
       'storageFolder': storageFolder,
       'fileNamePrefix': fileNamePrefix,
+      'preferredCameraName': preferredCameraName,
+      'ffmpegBinaryPath': ffmpegBinaryPath,
       'autoDownload': autoDownload,
       'autoDelete': autoDelete,
       'language': language,
@@ -69,6 +81,8 @@ class AppSettings {
           AppConstants.defaultStorageFolderName,
       fileNamePrefix: (json['fileNamePrefix'] as String?) ??
           AppConstants.defaultFileNamePrefix,
+      preferredCameraName: (json['preferredCameraName'] as String?) ?? '',
+      ffmpegBinaryPath: (json['ffmpegBinaryPath'] as String?) ?? '',
       autoDownload: json['autoDownload'] as bool? ?? true,
       autoDelete: json['autoDelete'] as bool? ?? false,
       language: (json['language'] as String?) ?? 'Indonesia',

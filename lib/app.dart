@@ -12,6 +12,7 @@ import 'core/services/diagnostic_service.dart';
 import 'core/services/settings_service.dart';
 import 'core/services/system_service.dart';
 import 'core/theme/app_theme.dart';
+import 'native/windows/camera_ffi.dart';
 
 class PhotoboothApp extends StatelessWidget {
   const PhotoboothApp({super.key});
@@ -22,10 +23,16 @@ class PhotoboothApp extends StatelessWidget {
       providers: [
         Provider<AppLoggerService>(create: (_) => AppLoggerService()),
         Provider<SettingsService>(create: (_) => SettingsService()),
-        Provider<SystemService>(create: (_) => SystemService()),
+        Provider<CameraNativeBridge>(create: (_) => CameraNativeBridge()),
+        Provider<SystemService>(
+          create: (context) => SystemService(
+            cameraNativeBridge: context.read<CameraNativeBridge>(),
+          ),
+        ),
         Provider<CameraService>(
           create: (context) => MockCameraService(
             logger: context.read<AppLoggerService>(),
+            cameraNativeBridge: context.read<CameraNativeBridge>(),
           ),
         ),
         Provider<DiagnosticService>(
@@ -60,12 +67,13 @@ class PhotoboothApp extends StatelessWidget {
             settingsRepository: context.read<SettingsRepository>(),
             cameraRepository: context.read<CameraRepository>(),
             diagnosticRepository: context.read<DiagnosticRepository>(),
+            cameraNativeBridge: context.read<CameraNativeBridge>(),
           ),
         ),
       ],
       child: Builder(
         builder: (context) {
-          final controller = context.watch<AppController>();
+          final controller = context.read<AppController>();
           final router = buildAppRouter(controller);
 
           return MaterialApp.router(

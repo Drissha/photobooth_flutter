@@ -48,4 +48,14 @@ class CameraRepository {
     await _logger.info('Capture completed', data: {'file': item.fileName});
     return item;
   }
+
+  Future<String> capturePreviewFrame({
+    required String storageFolder,
+    required String fileNamePrefix,
+  }) {
+    return _service.capturePreviewFrame(
+      storageFolder: storageFolder,
+      fileNamePrefix: fileNamePrefix,
+    );
+  }
 }

@@ -1,11 +1,50 @@
-import 'dart:ffi';
+import 'dart:io';
 
 class WindowsCameraBridge {
   WindowsCameraBridge();
 
-  DynamicLibrary? get library => null;
+  List<String> listAvailableCameras() {
+    if (!Platform.isWindows) {
+      return const [];
+    }
 
-  bool get isAvailable => false;
+    final result = Process.runSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        r"Get-PnpDevice -Class Camera,Image -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName } | Select-Object -ExpandProperty FriendlyName",
+      ],
+    );
 
-  String get statusMessage => 'Native camera bridge is not wired yet.';
+    if (result.exitCode != 0) {
+      return const [];
+    }
+
+    final devices = <String>[];
+    for (final rawLine in result.stdout.toString().split(RegExp(r'\r?\n'))) {
+      final line = rawLine.trim();
+      if (line.isEmpty || devices.contains(line)) {
+        continue;
+      }
+      devices.add(line);
+    }
+    return devices;
+  }
+
+  bool get isAvailable => Platform.isWindows;
+
+  String get statusMessage {
+    if (!Platform.isWindows) {
+      return 'Windows camera bridge hanya tersedia di Windows.';
+    }
+
+    final cameras = listAvailableCameras();
+    if (cameras.isEmpty) {
+      return 'Tidak ada webcam Windows terdeteksi.';
+    }
+
+    return 'Webcam Windows terdeteksi: ${cameras.first}.';
+  }
 }

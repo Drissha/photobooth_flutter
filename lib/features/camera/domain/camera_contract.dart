@@ -8,4 +8,8 @@ abstract class CameraContract {
     required String storageFolder,
     required String fileNamePrefix,
   });
+  Future<String> capturePreviewFrame({
+    required String storageFolder,
+    required String fileNamePrefix,
+  });
 }

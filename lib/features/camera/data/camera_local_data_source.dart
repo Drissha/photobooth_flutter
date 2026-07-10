@@ -18,4 +18,14 @@ class CameraLocalDataSource {
       fileNamePrefix: fileNamePrefix,
     );
   }
+
+  Future<String> capturePreviewFrame({
+    required String storageFolder,
+    required String fileNamePrefix,
+  }) {
+    return _service.capturePreviewFrame(
+      storageFolder: storageFolder,
+      fileNamePrefix: fileNamePrefix,
+    );
+  }
 }
